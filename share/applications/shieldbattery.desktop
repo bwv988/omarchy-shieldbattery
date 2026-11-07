@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=ShieldBattery
+GenericName=StarCraft: Brood War Client
+Comment=Community-run StarCraft 1 client (umu-launcher + GE-Proton)
+Exec=omarchy-launch-shieldbattery
+Icon=shieldbattery
+Terminal=false
+Categories=Game;
+Keywords=starcraft;broodwar;bw;shieldbattery;
+StartupNotify=true
+StartupWMClass=steam_app_shieldbattery

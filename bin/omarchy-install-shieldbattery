@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# omarchy:summary=Install ShieldBattery (community StarCraft: Brood War client) into the Battle.net Proton prefix.
+# omarchy:args=[--reinstall]
+# omarchy:examples=omarchy-install-shieldbattery
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+PREFIX="$HOME/Games/battlenet"
+STARCRAFT_DIR="$PREFIX/drive_c/Program Files (x86)/StarCraft"
+APP="$PREFIX/drive_c/users/steamuser/AppData/Local/Programs/shieldbattery-app/ShieldBattery.exe"
+INSTALLER_URL="https://shieldbattery.net/published_artifacts/win/ShieldBattery.latest.exe"
+installer="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/ShieldBattery.latest.exe"
+log="/tmp/omarchy-shieldbattery-installer.log"
+
+reinstall=0
+case "${1:-}" in
+  --reinstall) reinstall=1 ;;
+  -h | --help)
+    cat <<'EOF'
+Usage: omarchy-install-shieldbattery [--reinstall]
+
+Downloads the ShieldBattery Windows installer and installs it into the existing
+Battle.net Proton prefix (~/Games/battlenet), where it can use the StarCraft
+files Battle.net already installed.
+
+Requires Battle.net + StarCraft first:  omarchy install gaming battlenet
+
+Options:
+  --reinstall   Install again even when ShieldBattery is already present.
+EOF
+    exit 0
+    ;;
+  "") ;;
+  *)
+    echo "Unknown argument: $1" >&2
+    echo "Try: omarchy-install-shieldbattery --help" >&2
+    exit 1
+    ;;
+esac
+
+# ShieldBattery is a client, not a game: it finds StarCraft through Battle.net's
+# product.db (or the Blizzard registry keys), so that install has to exist first.
+if [[ ! -d $STARCRAFT_DIR ]]; then
+  cat >&2 <<'EOF'
+StarCraft is not installed in ~/Games/battlenet.
+
+ShieldBattery is a client for StarCraft: Brood War, so set up Battle.net first:
+
+  omarchy install gaming battlenet
+
+Then install StarCraft: Remastered inside Battle.net and re-run this.
+EOF
+  exit 1
+fi
+
+if [[ -f $APP ]] && ((!reinstall)); then
+  echo "ShieldBattery is already installed:"
+  echo "  $APP"
+  echo
+  echo "Launch it with: omarchy-launch-shieldbattery"
+  echo "Reinstall with: omarchy-install-shieldbattery --reinstall"
+  exit 0
+fi
+
+if pgrep -f "shieldbattery-app" >/dev/null 2>&1; then
+  echo "ShieldBattery is running. Close it first." >&2
+  exit 1
+fi
+
+omarchy-pkg-add umu-launcher
+
+mkdir -p "${installer%/*}"
+echo "Downloading the ShieldBattery installer..."
+curl --fail --location --retry 3 "$INSTALLER_URL" --output "$installer"
+
+echo "Installing (silent)..."
+echo "Installer log: $log"
+
+export WINEPREFIX="$PREFIX"
+export PROTONPATH=GE-Proton
+export GAMEID=umu-shieldbattery
+export PROTON_VERB=run
+
+umu-run "$installer" /S >"$log" 2>&1 || true
+
+# NSIS returns before the payload is fully unpacked, so wait for the binary
+# instead of trusting the exit code.
+for _ in {1..30}; do
+  [[ -f $APP ]] && break
+  sleep 5
+done
+
+if [[ ! -f $APP ]]; then
+  echo "Install failed. Last lines of $log:" >&2
+  tail -20 "$log" >&2
+  echo >&2
+  echo "To run the wizard by hand:" >&2
+  echo "  umu-run $installer" >&2
+  exit 1
+fi
+
+cat <<EOF
+
+ShieldBattery is installed in $PREFIX.
+
+Launch it with:  omarchy-launch-shieldbattery
+
+EOF

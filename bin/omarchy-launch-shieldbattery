@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# omarchy:summary=Launch the ShieldBattery client via umu-launcher + GE-Proton.
+# omarchy:args=[--with-mangohud]
+# omarchy:examples=omarchy-launch-shieldbattery | omarchy-launch-shieldbattery --with-mangohud
+
+set -e
+
+# ShieldBattery shares the Battle.net prefix on purpose: it reads Battle.net's
+# product.db to find the StarCraft: Brood War install it needs to launch games.
+PREFIX="$HOME/Games/battlenet"
+LAUNCHER="$PREFIX/drive_c/users/steamuser/AppData/Local/Programs/shieldbattery-app/ShieldBattery.exe"
+
+with_mangohud=0
+for arg in "$@"; do
+  case "$arg" in
+    --with-mangohud) with_mangohud=1 ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: omarchy-launch-shieldbattery [--with-mangohud]
+
+Options:
+  --with-mangohud   Enable the MangoHud FPS overlay for games launched from
+                    ShieldBattery. Toggle perf logging in-game with Shift_L+F2;
+                    CSV logs land in ~/mangohud/.
+EOF
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $arg" >&2
+      echo "Try: omarchy-launch-shieldbattery --help" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ ! -f $LAUNCHER ]]; then
+  echo "ShieldBattery is not installed in $PREFIX." >&2
+  echo "Run: omarchy-install-shieldbattery" >&2
+  exit 1
+fi
+
+# Hyprland leaves XWayland apps unscaled (xwayland:force_zero_scaling), and Wine
+# reads its DPI from the prefix registry once at startup, so match it to the
+# focused monitor's scale on every launch. Skipped while the prefix is running:
+# the running app ignores it, and wineserver rewrites user.reg on exit.
+prefix_running() {
+  local pid prefix
+  for pid in $(pgrep -x wineserver); do
+    prefix=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^WINEPREFIX=//p')
+    [[ -n $prefix && $(realpath "$prefix" 2>/dev/null) == "$(realpath "$PREFIX")" ]] && return 0
+  done
+  return 1
+}
+
+match_dpi_to_monitor_scale() {
+  local scale dpi
+  scale=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true).scale')
+  [[ $scale =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 0
+  dpi=$(awk -v scale="$scale" 'BEGIN { printf "%d", scale * 96 + 0.5 }')
+  sed -i "s/^\"LogPixels\"=dword:[0-9a-f]\{8\}$/\"LogPixels\"=dword:$(printf '%08x' "$dpi")/" "$PREFIX/user.reg"
+}
+
+if ! prefix_running; then
+  match_dpi_to_monitor_scale
+fi
+
+env_args=(
+  WINEPREFIX="$PREFIX"
+  PROTONPATH=GE-Proton
+  GAMEID=umu-shieldbattery
+  PROTON_VERB=run
+  # Wine would otherwise create duplicate Start Menu entries for the Electron app.
+  WINEDLLOVERRIDES=winemenubuilder.exe=d
+)
+(( with_mangohud )) && env_args+=(MANGOHUD=1)
+
+env "${env_args[@]}" umu-run "$LAUNCHER"

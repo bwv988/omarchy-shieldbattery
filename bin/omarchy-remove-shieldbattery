@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# omarchy:summary=Remove ShieldBattery from the Battle.net Proton prefix (keeps Battle.net and StarCraft).
+# omarchy:examples=omarchy-remove-shieldbattery
+
+set -euo pipefail
+
+PREFIX="$HOME/Games/battlenet"
+APP_DIR="$PREFIX/drive_c/users/steamuser/AppData/Local/Programs/shieldbattery-app"
+UPDATER_DIR="$PREFIX/drive_c/users/steamuser/AppData/Local/shieldbattery-app-updater"
+SETTINGS_DIR="$PREFIX/drive_c/users/steamuser/AppData/Roaming/ShieldBattery"
+SETTINGS_LOCAL_DIR="$PREFIX/drive_c/users/steamuser/AppData/Roaming/ShieldBattery-Local"
+SHORTCUT="$PREFIX/drive_c/users/steamuser/Desktop/ShieldBattery.lnk"
+INSTALLER="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/ShieldBattery.latest.exe"
+
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help)
+      cat <<'EOF'
+Usage: omarchy-remove-shieldbattery
+
+Removes the ShieldBattery client, its updater, settings and replays from the
+Battle.net prefix. Battle.net, StarCraft, umu-launcher and GE-Proton are left
+alone, because Battle.net uses them too.
+
+Pass --keep-settings to keep settings.json, the replay library and replays.
+EOF
+      exit 0
+      ;;
+    --keep-settings) keep_settings=1 ;;
+    *)
+      echo "Unknown argument: $arg" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if pgrep -f "shieldbattery-app" >/dev/null 2>&1; then
+  echo "ShieldBattery is running. Close it before removing." >&2
+  exit 1
+fi
+
+rm -rf "$APP_DIR" "$UPDATER_DIR" "$SHORTCUT" "$INSTALLER"
+if [[ ${keep_settings:-0} -eq 0 ]]; then
+  rm -rf "$SETTINGS_DIR" "$SETTINGS_LOCAL_DIR"
+else
+  echo "Keeping settings and replays in:"
+  echo "  $SETTINGS_DIR"
+fi
+
+rm -f "$HOME/.local/share/applications/shieldbattery.desktop"
+
+echo
+echo "ShieldBattery removed. Battle.net and StarCraft were left untouched."
